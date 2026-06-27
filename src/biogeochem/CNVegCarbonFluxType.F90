@@ -945,6 +945,12 @@ contains
                   avgflag='A', &
                   long_name=get_repr_longname(k)//' C to food', &
                   ptr_patch=data1dptr)
+             if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
+                call hist_addfld1d (fname='GRAIN_TUBER', units='gC/m^2/s', &
+                     avgflag='A', &
+                     long_name='grain/tuber C to food', &
+                     ptr_patch=data1dptr)
+             end if
           end do
 
           this%repr_grainc_to_food_perharv_patch(begp:endp,:,:) = spval
@@ -959,6 +965,14 @@ contains
                   long_name=get_repr_longname(k)//' C to food per harvest; should only be output annually', &
                   ptr_patch=data2dptr, &
                   default='inactive')
+             if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
+                call hist_addfld2d (fname='GRAIN_TUBER_PERHARV', units='gC/m^2', &
+                     type2d='mxharvests', &
+                     avgflag='I', &
+                     long_name='grain/tuber C to food per harvest; should only be output annually', &
+                     ptr_patch=data2dptr, &
+                     default='inactive')
+             end if
           end do
 
           this%repr_grainc_to_food_thisyr_patch(begp:endp,:) = spval
@@ -972,6 +986,13 @@ contains
                   long_name=get_repr_longname(k)//' C to food harvested per calendar year; should only be output annually', &
                   ptr_patch=data1dptr, &
                   default='inactive')
+             if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
+                call hist_addfld1d (fname='GRAIN_TUBER_ANN', units='gC/m^2', &
+                     avgflag='I', &
+                     long_name='grain/tuber C to food harvested per calendar year; should only be output annually', &
+                     ptr_patch=data1dptr, &
+                     default='inactive')
+             end if
           end do
           
           this%leafc_to_biofuelc_patch(begp:endp) = spval

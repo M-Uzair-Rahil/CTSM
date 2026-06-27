@@ -16,6 +16,7 @@ module CNAllocationMod
   use clm_varctl           , only : use_c13, use_c14, iulog
   use PatchType            , only : patch
   use pftconMod            , only : pftcon, npcropmin
+  use pftconMod            , only : npotatoes, nirrig_potatoes
   use CropType             , only : crop_type
   use CropType             , only : cphase_planted, cphase_leafemerge, cphase_grainfill
   use PhotosynthesisMod    , only : photosyns_type
@@ -37,6 +38,8 @@ module CNAllocationMod
   public :: calc_allometry                 ! Calculate c_allometry and n_allometry terms based on allocation fractions
 
   ! !PRIVATE MEMBER VARIABLES:
+  real(r8), parameter, private :: potato_min_leaf_alloc = 1.e-5_r8
+
   type, private :: params_type
      real(r8) :: dayscrecover          ! number of days to recover negative cpool
   end type params_type
@@ -47,6 +50,17 @@ module CNAllocationMod
        __FILE__
 
 contains
+
+  !-----------------------------------------------------------------------
+  logical function is_potato_pft(ivt) result(is_potato)
+    !
+    ! !ARGUMENTS:
+    integer, intent(in) :: ivt
+    !-----------------------------------------------------------------------
+
+    is_potato = (ivt == npotatoes .or. ivt == nirrig_potatoes)
+
+  end function is_potato_pft
 
   !-----------------------------------------------------------------------
   subroutine readParams (ncid)
@@ -282,6 +296,10 @@ contains
     ! !LOCAL VARIABLES:
     integer :: p, fp, k
     real(r8) :: fleaf                                      ! fraction allocated to leaf
+    real(r8) :: tuber_bulking_frac                         ! fraction of potato tuber-bulking phase completed
+    real(r8) :: tuber_alloc                                ! potato allocation to tuber/reproductive pool
+    real(r8) :: veg_alloc                                  ! potato allocation remaining for leaf and stem
+    real(r8) :: stem_share                                 ! potato stem share of vegetative allocation
     real(r8) :: crop_phase(bounds%begp:bounds%endp)
 
     character(len=*), parameter :: subname = 'calc_crop_allocation_fractions'
@@ -300,6 +318,7 @@ contains
          declfact              => pftcon%declfact                                   , & ! Input:  parameter used below
          croplive              => crop_inst%croplive_patch                          , & ! Input:  [logical  (:)   ]  flag, true if planted, not harvested
          hui                   => crop_inst%hui_patch                               , & ! Input:  [real(r8) (:)   ]  crop patch heat unit index (growing degree-days); set to 0 at sowing and accumulated until harvest
+         substor_tind          => crop_inst%substor_tind_patch                      , & ! Input:  [real(r8) (:)   ]  SUBSTOR potato tuber demand factor
          peaklai               => cnveg_state_inst%peaklai_patch                    , & ! Input:  [integer  (:)   ]  1: max allowed lai; 0: not at max
          gddmaturity           => cnveg_state_inst%gddmaturity_patch                , & ! Input:  [real(r8) (:)   ]  gdd needed to harvest
          huigrain              => cnveg_state_inst%huigrain_patch                   , & ! Input:  [real(r8) (:)   ]  same to reach vegetative maturity
@@ -366,32 +385,56 @@ contains
           else if (crop_phase(p) == cphase_grainfill) then
              aroot(p) = max(0._r8, min(1._r8, arooti(ivt(p)) - &
                   (arooti(ivt(p)) - arootf(ivt(p))) * min(1._r8, hui(p)/gddmaturity(p))))
-             if (astemi(p) > astemf(ivt(p))) then
-                astem(p) = max(0._r8, max(astemf(ivt(p)), astem(p) * &
-                     (1._r8 - min((hui(p)-                 &
-                     huigrain(p))/((gddmaturity(p)*declfact(ivt(p)))- &
-                     huigrain(p)),1._r8)**allconss(ivt(p)) )))
-             end if
+             if (is_potato_pft(ivt(p))) then
+                aroot(p) = min(aroot(p), 1._r8 - potato_min_leaf_alloc)
+                tuber_bulking_frac = max(0._r8, min(1._r8, substor_tind(p)))
+                tuber_alloc = max(0._r8, min(1._r8 - aroot(p) - potato_min_leaf_alloc, &
+                     (1._r8 - aroot(p)) * tuber_bulking_frac))
+                veg_alloc = max(potato_min_leaf_alloc, 1._r8 - aroot(p) - tuber_alloc)
+                stem_share = max(0._r8, min(1._r8, &
+                     astemi(p) / max(potato_min_leaf_alloc, aleafi(p) + astemi(p))))
 
-             ! If crops have hit peaklai, then set leaf allocation to small value
-             if (peaklai(p) == 1) then
-                aleaf(p) = 1.e-5_r8
-             else if (aleafi(p) > aleaff(ivt(p))) then
-                aleaf(p) = max(1.e-5_r8, max(aleaff(ivt(p)), aleaf(p) * &
-                     (1._r8 - min((hui(p)-                    &
-                     huigrain(p))/((gddmaturity(p)*declfact(ivt(p)))- &
-                     huigrain(p)),1._r8)**allconsl(ivt(p)) )))
-             end if
+                if (peaklai(p) == 1) then
+                   aleaf(p) = min(potato_min_leaf_alloc, veg_alloc)
+                else
+                   aleaf(p) = max(potato_min_leaf_alloc, veg_alloc * (1._r8 - stem_share))
+                   aleaf(p) = min(aleaf(p), veg_alloc)
+                end if
+                astem(p) = max(0._r8, veg_alloc - aleaf(p))
 
-             ! For AgroIBIS-based crop model, all repr allocation is assumed to go
-             ! into the last reproductive pool. In practice there is only a single
-             ! reproductive pool with the AgroIBIS-based crop model, but for
-             ! software testing we can have multiple, in which situation we want the
-             ! active pool to be the last one.
-             do k = 1, nrepr-1
-                arepr(p,k) = 0._r8
-             end do
-             arepr(p,nrepr) = 1._r8 - aroot(p) - astem(p) - aleaf(p)
+                do k = 1, nrepr-1
+                   arepr(p,k) = 0._r8
+                end do
+                arepr(p,nrepr) = max(0._r8, 1._r8 - aroot(p) - astem(p) - aleaf(p))
+
+             else
+                if (astemi(p) > astemf(ivt(p))) then
+                   astem(p) = max(0._r8, max(astemf(ivt(p)), astem(p) * &
+                        (1._r8 - min((hui(p)-                 &
+                        huigrain(p))/((gddmaturity(p)*declfact(ivt(p)))- &
+                        huigrain(p)),1._r8)**allconss(ivt(p)) )))
+                end if
+
+                ! If crops have hit peaklai, then set leaf allocation to small value
+                if (peaklai(p) == 1) then
+                   aleaf(p) = 1.e-5_r8
+                else if (aleafi(p) > aleaff(ivt(p))) then
+                   aleaf(p) = max(1.e-5_r8, max(aleaff(ivt(p)), aleaf(p) * &
+                        (1._r8 - min((hui(p)-                    &
+                        huigrain(p))/((gddmaturity(p)*declfact(ivt(p)))- &
+                        huigrain(p)),1._r8)**allconsl(ivt(p)) )))
+                end if
+
+                ! For AgroIBIS-based crop model, all repr allocation is assumed to go
+                ! into the last reproductive pool. In practice there is only a single
+                ! reproductive pool with the AgroIBIS-based crop model, but for
+                ! software testing we can have multiple, in which situation we want the
+                ! active pool to be the last one.
+                do k = 1, nrepr-1
+                   arepr(p,k) = 0._r8
+                end do
+                arepr(p,nrepr) = 1._r8 - aroot(p) - astem(p) - aleaf(p)
+             end if
 
           else if (crop_phase(p) == cphase_planted) then
              ! pre emergence

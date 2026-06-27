@@ -192,6 +192,9 @@ module pftconMod
      real(r8), allocatable :: hybgdd        (:)   ! parameter used in CNPhenology
      real(r8), allocatable :: lfemerg       (:)   ! parameter used in CNPhenology
      real(r8), allocatable :: grnfill       (:)   ! parameter used in CNPhenology
+     real(r8), allocatable :: substor_p2    (:)   ! SUBSTOR potato relative daylength sensitivity
+     real(r8), allocatable :: substor_tc    (:)   ! SUBSTOR potato critical temperature for tuber induction
+     real(r8), allocatable :: substor_pd    (:)   ! SUBSTOR potato tuber development effect coefficient
      integer , allocatable :: mxmat         (:)   ! parameter used in CNPhenology
      real(r8), allocatable :: mbbopt        (:)   ! Ball-Berry equation slope used in Photosynthesis
      real(r8), allocatable :: medlynslope   (:)   ! Medlyn equation slope used in Photosynthesis
@@ -416,6 +419,9 @@ contains
     allocate( this%hybgdd        (0:mxpft) )       
     allocate( this%lfemerg       (0:mxpft) )      
     allocate( this%grnfill       (0:mxpft) )      
+    allocate( this%substor_p2    (0:mxpft) )
+    allocate( this%substor_tc    (0:mxpft) )
+    allocate( this%substor_pd    (0:mxpft) )
     allocate( this%mbbopt        (0:mxpft) )      
     allocate( this%medlynslope   (0:mxpft) )      
     allocate( this%medlynintercept(0:mxpft) )      
@@ -1003,6 +1009,15 @@ contains
     call ncd_io('grnfill', this%grnfill, 'read', ncid, readvar=readv)  
     if ( .not. readv ) call endrun(msg=' ERROR: error in reading in pft data'//errMsg(sourcefile, __LINE__))
 
+    call ncd_io('substor_p2', this%substor_p2, 'read', ncid, readvar=readv)
+    if ( .not. readv ) call endrun(msg=' ERROR: error in reading in pft data'//errMsg(sourcefile, __LINE__))
+
+    call ncd_io('substor_tc', this%substor_tc, 'read', ncid, readvar=readv)
+    if ( .not. readv ) call endrun(msg=' ERROR: error in reading in pft data'//errMsg(sourcefile, __LINE__))
+
+    call ncd_io('substor_pd', this%substor_pd, 'read', ncid, readvar=readv)
+    if ( .not. readv ) call endrun(msg=' ERROR: error in reading in pft data'//errMsg(sourcefile, __LINE__))
+
     call ncd_io('mbbopt', this%mbbopt, 'read', ncid, readvar=readv)  
     if ( .not. readv ) call endrun(msg=' ERROR: error in reading in pft data'//errMsg(sourcefile, __LINE__))
 
@@ -1235,6 +1250,11 @@ contains
 
     npcropmin            = ntmp_corn            ! first prognostic crop
     npcropmax            = mxpft                ! last prognostic crop in list
+
+    if (use_crop) then
+       this%mergetoclmpft(npotatoes)       = npotatoes
+       this%mergetoclmpft(nirrig_potatoes) = nirrig_potatoes
+    end if
 
     call this%set_is_pft_known_to_model()
     call this%set_num_cfts_known_to_model()
@@ -1507,6 +1527,9 @@ contains
     deallocate( this%hybgdd)
     deallocate( this%lfemerg)
     deallocate( this%grnfill)
+    deallocate( this%substor_p2)
+    deallocate( this%substor_tc)
+    deallocate( this%substor_pd)
     deallocate( this%mbbopt)
     deallocate( this%medlynslope)
     deallocate( this%medlynintercept)

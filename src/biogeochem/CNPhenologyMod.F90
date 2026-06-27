@@ -38,6 +38,11 @@ module CNPhenologyMod
   use Wateratm2lndBulkType            , only : wateratm2lndbulk_type
   use initVerticalMod                 , only : find_soil_layer_containing_depth
   use CropReprPoolsMod                , only : nrepr, repr_grain_min, repr_grain_max, repr_structure_min, repr_structure_max
+  use CNSubstorPotatoMod              , only : substor_relative_temp_factor
+  use CNSubstorPotatoMod              , only : substor_relative_daylength_factor
+  use CNSubstorPotatoMod              , only : substor_tuber_induction_index
+  use CNSubstorPotatoMod              , only : substor_tuber_demand_factor
+  use CNSubstorPotatoMod              , only : substor_air_thermal_time
   use ColumnType                      , only : col
   use GridcellType                    , only : grc                
   use PatchType                       , only : patch   
@@ -105,6 +110,7 @@ module CNPhenologyMod
   real(r8) :: dt                            ! time step delta t (seconds)
   real(r8) :: fracday                       ! dtime as a fraction of day
   real(r8) :: crit_dayl                     ! critical daylength for offset (seconds)
+  real(r8), parameter :: substor_tuber_init_threshold = 15._r8
   real(r8) :: ndays_on                      ! number of days to complete onset
   real(r8) :: ndays_off                     ! number of days to complete offset
   real(r8) :: fstor2tran                    ! fraction of storage to move to transfer on each onset
@@ -1800,8 +1806,10 @@ contains
     use pftconMod        , only : ntmp_corn, nswheat, nwwheat, ntmp_soybean
     use pftconMod        , only : nirrig_tmp_corn, nirrig_swheat, nirrig_wwheat, nirrig_tmp_soybean
     use pftconMod        , only : ntrp_corn, nsugarcane, ntrp_soybean, ncotton, nrice
+    use pftconMod        , only : npotatoes
     use pftconMod        , only : nirrig_trp_corn, nirrig_sugarcane, nirrig_trp_soybean
     use pftconMod        , only : nirrig_cotton, nirrig_rice
+    use pftconMod        , only : nirrig_potatoes
     use pftconMod        , only : nmiscanthus, nirrig_miscanthus, nswitchgrass, nirrig_switchgrass
     
     use clm_varcon       , only : spval, secspday
@@ -1862,6 +1870,12 @@ contains
     logical fake_harvest  ! Dealing with incorrect Dec. 31 planting
     logical did_plant_prescribed_today    ! Was the crop sown today?
     logical vernalization_forces_harvest ! Was the crop killed by freezing during vernalization?
+    logical is_potato
+    real(r8) substor_rtf
+    real(r8) substor_rdlf
+    real(r8) substor_tii
+    real(r8) substor_xstage
+    real(r8) substor_dtt
     !------------------------------------------------------------------------
 
     associate(                                                                   & 
@@ -1869,6 +1883,9 @@ contains
          
          leaf_long         =>    pftcon%leaf_long                                , & ! Input:  leaf longevity (yrs)                              
          leafcn            =>    pftcon%leafcn                                 , & ! Input:  leaf C:N (gC/gN)                                  
+         substor_p2        =>    pftcon%substor_p2                             , & ! Input:  SUBSTOR relative daylength sensitivity
+         substor_tc        =>    pftcon%substor_tc                             , & ! Input:  SUBSTOR critical temperature for tuber induction
+         substor_pd        =>    pftcon%substor_pd                             , & ! Input:  SUBSTOR tuber development effect coefficient
          manunitro         =>    pftcon%manunitro                              , & ! Input:  max manure to be applied in total (kgN/m2)
          minplanttemp      =>    pftcon%minplanttemp                           , & ! Input:  
          planttemp         =>    pftcon%planttemp                              , & ! Input:  
@@ -1880,6 +1897,7 @@ contains
          t10               =>    temperature_inst%t_a10_patch                  , & ! Input:  [real(r8) (:) ]  10-day running mean of the 2 m temperature (K)    
          a5tmin            =>    temperature_inst%t_a5min_patch                , & ! Input:  [real(r8) (:) ]  5-day running mean of min 2-m temperature         
          a10tmin           =>    temperature_inst%t_a10min_patch               , & ! Input:  [real(r8) (:) ]  10-day running mean of min 2-m temperature        
+         t_ref2m_max       =>    temperature_inst%t_ref2m_max_patch            , & ! Input:  [real(r8) (:) ]  daily maximum of average 2 m height surface air temperature (K)
          gdd020            =>    temperature_inst%gdd020_patch                 , & ! Input:  [real(r8) (:) ]  20 yr mean of gdd0                                
          gdd820            =>    temperature_inst%gdd820_patch                 , & ! Input:  [real(r8) (:) ]  20 yr mean of gdd8                                
 
@@ -1917,6 +1935,13 @@ contains
          leafn_xfer        =>    cnveg_nitrogenstate_inst%leafn_xfer_patch     , & ! Output: [real(r8) (:) ]  (gN/m2)   leaf N transfer                           
          crop_seedn_to_leaf =>   cnveg_nitrogenflux_inst%crop_seedn_to_leaf_patch, & ! Output: [real(r8) (:) ]  (gN/m2/s) seed source to leaf
          cphase            =>    crop_inst%cphase_patch                        , & ! Output: [real(r8) (:)]   phenology phase
+         substor_ctii      =>    crop_inst%substor_ctii_patch                  , & ! Output: [real(r8) (:)]   SUBSTOR cumulative tuber induction index
+         substor_tind      =>    crop_inst%substor_tind_patch                  , & ! Output: [real(r8) (:)]   SUBSTOR tuber demand factor
+         substor_cumdtt    =>    crop_inst%substor_cumdtt_patch                , & ! Output: [real(r8) (:)]   SUBSTOR cumulative air thermal time
+         substor_xdtt      =>    crop_inst%substor_xdtt_patch                  , & ! Output: [real(r8) (:)]   SUBSTOR cumulative air thermal time at tuber initiation
+         substor_dtii1     =>    crop_inst%substor_dtii1_patch                 , & ! Output: [real(r8) (:)]   SUBSTOR previous tuber induction factor
+         substor_dtii2     =>    crop_inst%substor_dtii2_patch                 , & ! Output: [real(r8) (:)]   SUBSTOR previous tuber induction factor
+         substor_dtii3     =>    crop_inst%substor_dtii3_patch                 , & ! Output: [real(r8) (:)]   SUBSTOR current tuber induction factor
          fert              =>    cnveg_nitrogenflux_inst%fert_patch              & ! Output: [real(r8) (:) ]  (gN/m2/s) fertilizer applied each timestep 
          )
 
@@ -1937,6 +1962,7 @@ contains
          c = patch%column(p)
          g = patch%gridcell(p)
          h = inhemi(p)
+         is_potato = (ivt(p) == npotatoes .or. ivt(p) == nirrig_potatoes)
 
          ! background litterfall and transfer rates; long growing season factor
 
@@ -2101,6 +2127,15 @@ contains
                               cnveg_carbonflux_inst, cnveg_nitrogenflux_inst, &
                               c13_cnveg_carbonstate_inst, c14_cnveg_carbonstate_inst)
                did_plant = .true.
+               if (is_potato) then
+                  substor_ctii(p)  = 0._r8
+                  substor_tind(p)  = 0._r8
+                  substor_cumdtt(p) = 0._r8
+                  substor_xdtt(p)   = 0._r8
+                  substor_dtii1(p) = 0._r8
+                  substor_dtii2(p) = 0._r8
+                  substor_dtii3(p) = 0._r8
+               end if
 
             else
                gddmaturity(p) = 0._r8
@@ -2212,6 +2247,39 @@ contains
             ! days past planting may determine harvest
             idpp = DaysPastPlanting(idop(p), jday)
 
+            if (is_potato .and. leafout(p) >= huileaf(p)) then
+               if (substor_ctii(p) > 1.e30_r8) substor_ctii(p) = 0._r8
+               if (substor_tind(p) > 1.e30_r8) substor_tind(p) = 0._r8
+               if (substor_cumdtt(p) > 1.e30_r8) substor_cumdtt(p) = 0._r8
+               if (substor_xdtt(p) > 1.e30_r8) substor_xdtt(p) = 0._r8
+               if (substor_dtii1(p) > 1.e30_r8) substor_dtii1(p) = 0._r8
+               if (substor_dtii2(p) > 1.e30_r8) substor_dtii2(p) = 0._r8
+               if (substor_dtii3(p) > 1.e30_r8) substor_dtii3(p) = 0._r8
+               substor_dtt = substor_air_thermal_time(0.5_r8 * ((t_ref2m_max(p) - tfrz) + &
+                    (t_ref2m_min(p) - tfrz)))
+               substor_cumdtt(p) = substor_cumdtt(p) + substor_dtt
+               substor_rtf = substor_relative_temp_factor(t_ref2m_min(p) - tfrz, &
+                    t_ref2m_max(p) - tfrz, substor_tc(ivt(p)))
+               substor_rdlf = substor_relative_daylength_factor(grc%dayl(g) / secspday * 24._r8, &
+                    substor_p2(ivt(p)))
+               substor_tii = substor_tuber_induction_index(substor_rdlf, substor_rtf, 1._r8, 1._r8)
+
+               if (substor_ctii(p) < substor_tuber_init_threshold) then
+                  substor_ctii(p) = substor_ctii(p) + substor_tii
+                  if (substor_ctii(p) >= substor_tuber_init_threshold) then
+                     huigrain(p) = hui(p)
+                     substor_xdtt(p) = substor_cumdtt(p)
+                  end if
+               end if
+
+               substor_dtii1(p) = substor_dtii2(p)
+               substor_dtii2(p) = substor_dtii3(p)
+               substor_dtii3(p) = min(substor_rtf + 0.5_r8 * (1._r8 - min(1._r8, 1._r8)), 1._r8)
+               substor_xstage = 2._r8 + max(0._r8, substor_cumdtt(p) - substor_xdtt(p)) / 100._r8
+               substor_tind(p) = substor_tuber_demand_factor(substor_dtii1(p), substor_dtii2(p), &
+                    substor_dtii3(p), substor_xstage, substor_pd(ivt(p)), 1._r8)
+            end if
+
             ! onset_counter initialized to zero when .not. croplive
             ! offset_counter relevant only at time step of harvest
 
@@ -2298,7 +2366,9 @@ contains
             ! phase. However, despite these differences: if you make changes to the
             ! following conditionals, you should also check to see if you should make
             ! similar changes in CropPhase.
-            if ((.not. do_harvest) .and. leafout(p) >= huileaf(p) .and. hui(p) < huigrain(p) .and. idpp < mxmat) then
+            if ((.not. do_harvest) .and. leafout(p) >= huileaf(p) .and. &
+                 ((is_potato .and. substor_ctii(p) < substor_tuber_init_threshold) .or. &
+                  ((.not. is_potato) .and. hui(p) < huigrain(p))) .and. idpp < mxmat) then
                cphase(p) = cphase_leafemerge
                if (abs(onset_counter(p)) > 1.e-6_r8) then
                   onset_flag(p)    = 1._r8
@@ -2372,7 +2442,8 @@ contains
                ! AgroIBIS uses a complex formula for lai decline.
                ! Use CN's simple formula at least as a place holder (slevis)
 
-            else if (hui(p) >= huigrain(p)) then
+            else if ((is_potato .and. substor_ctii(p) >= substor_tuber_init_threshold) .or. &
+                     ((.not. is_potato) .and. hui(p) >= huigrain(p))) then
                cphase(p) = cphase_grainfill
                bglfr(p) = 1._r8/(leaf_long(ivt(p))*avg_dayspyr*secspday)
             end if
@@ -2387,6 +2458,15 @@ contains
               end if
 
          else   ! crop not live
+            if (is_potato) then
+               substor_ctii(p)  = 0._r8
+               substor_tind(p)  = 0._r8
+               substor_cumdtt(p) = 0._r8
+               substor_xdtt(p)   = 0._r8
+               substor_dtii1(p) = 0._r8
+               substor_dtii2(p) = 0._r8
+               substor_dtii3(p) = 0._r8
+            end if
             ! next 2 lines conserve mass if leaf*_xfer > 0 due to interpinic.
             ! We subtract from any existing value in crop_seedc_to_leaf /
             ! crop_seedn_to_leaf in the unlikely event that we enter this block of
@@ -2565,8 +2645,10 @@ contains
     use pftconMod        , only : ntmp_corn, nswheat, nwwheat, ntmp_soybean
     use pftconMod        , only : nirrig_tmp_corn, nirrig_swheat, nirrig_wwheat, nirrig_tmp_soybean
     use pftconMod        , only : ntrp_corn, nsugarcane, ntrp_soybean, ncotton, nrice
+    use pftconMod        , only : npotatoes
     use pftconMod        , only : nirrig_trp_corn, nirrig_sugarcane, nirrig_trp_soybean
     use pftconMod        , only : nirrig_cotton, nirrig_rice
+    use pftconMod        , only : nirrig_potatoes
     use pftconMod        , only : nmiscanthus, nirrig_miscanthus, nswitchgrass, nirrig_switchgrass
     !
     ! !ARGUMENTS:
@@ -2692,7 +2774,8 @@ contains
          end if
          if (ivt(p) == nswheat .or. ivt(p) == nirrig_swheat .or. &
                ivt(p) == ncotton .or. ivt(p) == nirrig_cotton .or. &
-               ivt(p) == nrice   .or. ivt(p) == nirrig_rice) then
+               ivt(p) == nrice   .or. ivt(p) == nirrig_rice   .or. &
+               ivt(p) == npotatoes .or. ivt(p) == nirrig_potatoes) then
             gddmaturity(p) = min(gdd020(p), hybgdd(ivt(p)))
          end if
 

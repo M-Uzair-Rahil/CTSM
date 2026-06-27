@@ -70,6 +70,13 @@ module CropType
      ! achieved before the GDD threshold for grain fill has been reached; see CropPhenology().
      real(r8), pointer :: hui_patch               (:)   ! crop patch heat unit index (ddays)
      real(r8), pointer :: gddaccum_patch          (:)   ! patch growing degree-days from planting (air) (ddays)
+     real(r8), pointer :: substor_ctii_patch      (:)   ! SUBSTOR potato cumulative tuber induction index
+     real(r8), pointer :: substor_tind_patch      (:)   ! SUBSTOR potato tuber demand factor [0-1]
+     real(r8), pointer :: substor_cumdtt_patch    (:)   ! SUBSTOR potato cumulative air thermal time
+     real(r8), pointer :: substor_xdtt_patch      (:)   ! SUBSTOR potato cumulative air thermal time at tuber initiation
+     real(r8), pointer :: substor_dtii1_patch     (:)   ! SUBSTOR potato tuber induction factor, day -2
+     real(r8), pointer :: substor_dtii2_patch     (:)   ! SUBSTOR potato tuber induction factor, day -1
+     real(r8), pointer :: substor_dtii3_patch     (:)   ! SUBSTOR potato tuber induction factor, current day
 
    contains
      ! Public routines
@@ -227,6 +234,13 @@ contains
     allocate(this%hui_patch (begp:endp))      ; this%hui_patch      (:) = spval
     allocate(this%gddaccum_patch (begp:endp)) ; this%gddaccum_patch (:) = spval
     allocate(this%gddtsoi_patch  (begp:endp)) ; this%gddtsoi_patch  (:) = spval
+    allocate(this%substor_ctii_patch(begp:endp)) ; this%substor_ctii_patch(:) = spval
+    allocate(this%substor_tind_patch(begp:endp)) ; this%substor_tind_patch(:) = spval
+    allocate(this%substor_cumdtt_patch(begp:endp)) ; this%substor_cumdtt_patch(:) = spval
+    allocate(this%substor_xdtt_patch(begp:endp)) ; this%substor_xdtt_patch(:) = spval
+    allocate(this%substor_dtii1_patch(begp:endp)) ; this%substor_dtii1_patch(:) = spval
+    allocate(this%substor_dtii2_patch(begp:endp)) ; this%substor_dtii2_patch(:) = spval
+    allocate(this%substor_dtii3_patch(begp:endp)) ; this%substor_dtii3_patch(:) = spval
     allocate(this%vf_patch       (begp:endp)) ; this%vf_patch       (:) = 0.0_r8
     allocate(this%cphase_patch   (begp:endp)) ; this%cphase_patch   (:) = cphase_not_planted
     allocate(this%sowing_reason_patch (begp:endp)) ; this%sowing_reason_patch (:) = -1
@@ -288,6 +302,31 @@ contains
     call hist_addfld1d (fname='GDDTSOI', units='ddays', &
          avgflag='A', long_name='Growing degree-days from planting (top two soil layers)', &
          ptr_patch=this%gddtsoi_patch, default='inactive')
+
+    this%substor_ctii_patch(begp:endp) = spval
+    call hist_addfld1d (fname='SUBSTOR_CTII', units='unitless', &
+         avgflag='A', long_name='SUBSTOR potato cumulative tuber induction index', &
+         ptr_patch=this%substor_ctii_patch, default='inactive')
+
+    this%substor_tind_patch(begp:endp) = spval
+    call hist_addfld1d (fname='SUBSTOR_TIND', units='unitless', &
+         avgflag='A', long_name='SUBSTOR potato tuber demand factor', &
+         ptr_patch=this%substor_tind_patch, default='inactive')
+
+    this%substor_cumdtt_patch(begp:endp) = spval
+    call hist_addfld1d (fname='SUBSTOR_CUMDTT', units='unitless', &
+         avgflag='A', long_name='SUBSTOR potato cumulative air thermal time', &
+         ptr_patch=this%substor_cumdtt_patch, default='inactive')
+
+    this%substor_xdtt_patch(begp:endp) = spval
+    call hist_addfld1d (fname='SUBSTOR_XDTT', units='unitless', &
+         avgflag='A', long_name='SUBSTOR potato cumulative air thermal time at tuber initiation', &
+         ptr_patch=this%substor_xdtt_patch, default='inactive')
+
+    this%substor_dtii3_patch(begp:endp) = spval
+    call hist_addfld1d (fname='SUBSTOR_DTII', units='unitless', &
+         avgflag='A', long_name='SUBSTOR potato current daily tuber induction factor', &
+         ptr_patch=this%substor_dtii3_patch, default='inactive')
 
     this%cphase_patch(begp:endp) = spval
     call hist_addfld1d (fname='CPHASE', units='0-not planted, 1-planted, 2-leaf emerge, 3-grain fill, 4-harvest', &
@@ -628,6 +667,35 @@ contains
             dim1name='pft', long_name='crop phenology phase', &
             units='0-not planted, 1-planted, 2-leaf emerge, 3-grain fill, 4-harvest', &
             interpinic_flag='interp', readvar=readvar, data=this%cphase_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_ctii', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato cumulative tuber induction index', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_ctii_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_tind', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato tuber demand factor', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_tind_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_cumdtt', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato cumulative air thermal time', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_cumdtt_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_xdtt', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato cumulative air thermal time at tuber initiation', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_xdtt_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_dtii1', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato tuber induction factor day -2', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_dtii1_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_dtii2', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato tuber induction factor day -1', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_dtii2_patch)
+
+       call restartvar(ncid=ncid, flag=flag,  varname='substor_dtii3', xtype=ncd_double, &
+            dim1name='pft', long_name='SUBSTOR potato tuber induction factor current day', &
+            units='unitless', interpinic_flag='interp', readvar=readvar, data=this%substor_dtii3_patch)
+
        if (flag=='read' )then
           call this%checkDates( )  ! Check that restart date is same calendar date (even if year is different)
                                    ! This is so that it properly goes through

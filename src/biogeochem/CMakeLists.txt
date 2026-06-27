@@ -3,6 +3,7 @@
 
 list(APPEND clm_sources
   CNSharedParamsMod.F90
+  CNSubstorPotatoMod.F90
   CNPhenologyMod.F90
   CNSpeciesMod.F90
   CNDVType.F90
