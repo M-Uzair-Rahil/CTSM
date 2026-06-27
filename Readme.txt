@@ -36,32 +36,23 @@ git add .
 git commit -m "Add potato crop modifications"
 git push -u origin potato-development
 
-Now i go to derecho: 
+
+### In Derecho 
+
+# 1. Go to model directory on Derecho
 cd /glade/work/rahilmoh/CLM/Model
 
-# 1. Go to your model directory
-cd /glade/work/rahilmoh/CLM/Model
+# 2. Clone your GitHub fork and potato branch
+git clone -b potato-development https://github.com/M-Uzair-Rahil/CTSM.git CTSM_potato_github
 
-# 2. Clone your GitHub repository
-git clone -b potato-development https://github.com/M-Uzair-Rahil/CTSM.git CTSM_potatoes_clean
+# 3. Enter the repo
+cd CTSM_potato_github
 
-# 3. Enter the repository
-cd CTSM_potatoes_clean
-
-# 4. Add the official CTSM repository
+# 4. Add official CTSM as upstream
 git remote add upstream https://github.com/ESCOMP/CTSM.git
 
-# 5. Fetch all CTSM tags
+# 5. Fetch official CTSM tags
 git fetch upstream --tags
 
-# 6. Reset your branch to the official CTSM tag
-git checkout -B potato-development alpha-ctsm5.2.mksrf.27_ctsm5.1.dev176
-
-# 7. Pull your potato modifications from GitHub
-git pull origin potato-development
-
-# 8. Initialize all CTSM externals
-./manage_externals/checkout_externals
-
-# 9. Check that everything is clean
-git status
+# 6. Confirm your branch is based on the correct CTSM tag
+git describe --tags --always
