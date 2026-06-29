@@ -110,7 +110,7 @@ module CNPhenologyMod
   real(r8) :: dt                            ! time step delta t (seconds)
   real(r8) :: fracday                       ! dtime as a fraction of day
   real(r8) :: crit_dayl                     ! critical daylength for offset (seconds)
-  real(r8), parameter :: substor_tuber_init_threshold = 15._r8
+  real(r8), parameter :: substor_tuber_init_threshold = 10._r8
   real(r8) :: ndays_on                      ! number of days to complete onset
   real(r8) :: ndays_off                     ! number of days to complete offset
   real(r8) :: fstor2tran                    ! fraction of storage to move to transfer on each onset
