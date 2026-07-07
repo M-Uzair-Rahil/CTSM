@@ -144,6 +144,7 @@ module CNPhenologyMod
   logical,parameter :: acc_ph = .False.                          ! Another matrix solution check
 
   real(r8), private :: initial_seed_at_planting        = 3._r8   ! Initial seed at planting
+  real(r8), private :: potato_seed_tuber_leafc        = 30._r8  ! Potato seed-tuber reserve C sent to leaf xfer at planting
 
   real(r8)         :: min_gddmaturity = 1._r8     ! Weird things can happen if gddmaturity is tiny
   logical,  public :: generate_crop_gdds = .false. ! If true, harvest the day before next sowing
@@ -197,7 +198,7 @@ contains
     character(len=*), parameter :: subname = 'CNPhenologyReadNML'
     character(len=*), parameter :: nmlname = 'cnphenology'
     !-----------------------------------------------------------------------
-    namelist /cnphenology/ initial_seed_at_planting, onset_thresh_depends_on_veg, &
+    namelist /cnphenology/ initial_seed_at_planting, potato_seed_tuber_leafc, onset_thresh_depends_on_veg, &
                            min_critical_dayl_method, generate_crop_gdds, &
                            use_mxmat
 
@@ -221,6 +222,7 @@ contains
     end if
 
     call shr_mpi_bcast (initial_seed_at_planting,    mpicom)
+    call shr_mpi_bcast (potato_seed_tuber_leafc,    mpicom)
     call shr_mpi_bcast (onset_thresh_depends_on_veg, mpicom)
     call shr_mpi_bcast (min_critical_dayl_method,     mpicom)
     call shr_mpi_bcast (generate_crop_gdds,          mpicom)
@@ -2675,6 +2677,7 @@ contains
     real(r8) gdd_target    ! cultivar GDD target this growing season
     real(r8) this_sowing_reason ! number representing sowing reason(s)
     logical did_rx_gdds    ! did this patch use a prescribed harvest requirement?
+    logical is_potato      ! true for potato and irrigated potato PFTs
     !------------------------------------------------------------------------
 
     associate(                                                                     & 
@@ -2726,7 +2729,12 @@ contains
       sowing_reason(p,sowing_count(p)) = this_sowing_reason
       crop_inst%sowing_reason_patch(p) = this_sowing_reason
 
-      leafc_xfer(p)  = initial_seed_at_planting
+      is_potato = (ivt(p) == npotatoes .or. ivt(p) == nirrig_potatoes)
+      if (is_potato) then
+         leafc_xfer(p)  = potato_seed_tuber_leafc
+      else
+         leafc_xfer(p)  = initial_seed_at_planting
+      end if
       leafn_xfer(p) = leafc_xfer(p) / leafcn_in ! with onset
       crop_seedc_to_leaf(p) = leafc_xfer(p)/dt
       crop_seedn_to_leaf(p) = leafn_xfer(p)/dt
