@@ -145,6 +145,7 @@ module CNPhenologyMod
 
   real(r8), private :: initial_seed_at_planting        = 3._r8   ! Initial seed at planting
   real(r8), private :: potato_seed_tuber_leafc        = 30._r8  ! Potato seed-tuber reserve C sent to leaf xfer at planting
+  real(r8), private :: potato_min_tlai_for_tuber_init = 1.25_r8 ! Minimum potato LAI before entering tuber bulking
 
   real(r8)         :: min_gddmaturity = 1._r8     ! Weird things can happen if gddmaturity is tiny
   logical,  public :: generate_crop_gdds = .false. ! If true, harvest the day before next sowing
@@ -198,7 +199,8 @@ contains
     character(len=*), parameter :: subname = 'CNPhenologyReadNML'
     character(len=*), parameter :: nmlname = 'cnphenology'
     !-----------------------------------------------------------------------
-    namelist /cnphenology/ initial_seed_at_planting, potato_seed_tuber_leafc, onset_thresh_depends_on_veg, &
+    namelist /cnphenology/ initial_seed_at_planting, potato_seed_tuber_leafc, &
+                           potato_min_tlai_for_tuber_init, onset_thresh_depends_on_veg, &
                            min_critical_dayl_method, generate_crop_gdds, &
                            use_mxmat
 
@@ -223,6 +225,7 @@ contains
 
     call shr_mpi_bcast (initial_seed_at_planting,    mpicom)
     call shr_mpi_bcast (potato_seed_tuber_leafc,    mpicom)
+    call shr_mpi_bcast (potato_min_tlai_for_tuber_init, mpicom)
     call shr_mpi_bcast (onset_thresh_depends_on_veg, mpicom)
     call shr_mpi_bcast (min_critical_dayl_method,     mpicom)
     call shr_mpi_bcast (generate_crop_gdds,          mpicom)
@@ -2268,16 +2271,25 @@ contains
 
                if (substor_ctii(p) < substor_tuber_init_threshold) then
                   substor_ctii(p) = substor_ctii(p) + substor_tii
-                  if (substor_ctii(p) >= substor_tuber_init_threshold) then
-                     huigrain(p) = hui(p)
-                     substor_xdtt(p) = substor_cumdtt(p)
-                  end if
+               end if
+
+               if (substor_ctii(p) >= substor_tuber_init_threshold .and. &
+                    tlai(p) >= potato_min_tlai_for_tuber_init .and. hui(p) < huigrain(p)) then
+                  huigrain(p) = hui(p)
+                  substor_xdtt(p) = substor_cumdtt(p)
+               else if (substor_ctii(p) >= substor_tuber_init_threshold .and. &
+                    tlai(p) < potato_min_tlai_for_tuber_init) then
+                  huigrain(p) = max(huigrain(p), hui(p) + 1._r8)
                end if
 
                substor_dtii1(p) = substor_dtii2(p)
                substor_dtii2(p) = substor_dtii3(p)
                substor_dtii3(p) = min(substor_rtf + 0.5_r8 * (1._r8 - min(1._r8, 1._r8)), 1._r8)
-               substor_xstage = 2._r8 + max(0._r8, substor_cumdtt(p) - substor_xdtt(p)) / 100._r8
+               if (substor_xdtt(p) > 0._r8) then
+                  substor_xstage = 2._r8 + max(0._r8, substor_cumdtt(p) - substor_xdtt(p)) / 100._r8
+               else
+                  substor_xstage = 2._r8
+               end if
                substor_tind(p) = substor_tuber_demand_factor(substor_dtii1(p), substor_dtii2(p), &
                     substor_dtii3(p), substor_xstage, substor_pd(ivt(p)), 1._r8)
             end if
@@ -2369,7 +2381,8 @@ contains
             ! following conditionals, you should also check to see if you should make
             ! similar changes in CropPhase.
             if ((.not. do_harvest) .and. leafout(p) >= huileaf(p) .and. &
-                 ((is_potato .and. substor_ctii(p) < substor_tuber_init_threshold) .or. &
+                 ((is_potato .and. (substor_ctii(p) < substor_tuber_init_threshold .or. &
+                  tlai(p) < potato_min_tlai_for_tuber_init)) .or. &
                   ((.not. is_potato) .and. hui(p) < huigrain(p))) .and. idpp < mxmat) then
                cphase(p) = cphase_leafemerge
                if (abs(onset_counter(p)) > 1.e-6_r8) then
@@ -2444,7 +2457,8 @@ contains
                ! AgroIBIS uses a complex formula for lai decline.
                ! Use CN's simple formula at least as a place holder (slevis)
 
-            else if ((is_potato .and. substor_ctii(p) >= substor_tuber_init_threshold) .or. &
+            else if ((is_potato .and. substor_ctii(p) >= substor_tuber_init_threshold .and. &
+                     tlai(p) >= potato_min_tlai_for_tuber_init) .or. &
                      ((.not. is_potato) .and. hui(p) >= huigrain(p))) then
                cphase(p) = cphase_grainfill
                bglfr(p) = 1._r8/(leaf_long(ivt(p))*avg_dayspyr*secspday)
