@@ -2274,11 +2274,11 @@ contains
                end if
 
                if (substor_ctii(p) >= substor_tuber_init_threshold .and. &
-                    tlai(p) >= potato_min_tlai_for_tuber_init .and. hui(p) < huigrain(p)) then
+                    tlai(p) >= potato_min_tlai_for_tuber_init .and. substor_xdtt(p) <= 0._r8) then
                   huigrain(p) = hui(p)
                   substor_xdtt(p) = substor_cumdtt(p)
                else if (substor_ctii(p) >= substor_tuber_init_threshold .and. &
-                    tlai(p) < potato_min_tlai_for_tuber_init) then
+                    tlai(p) < potato_min_tlai_for_tuber_init .and. substor_xdtt(p) <= 0._r8) then
                   huigrain(p) = max(huigrain(p), hui(p) + 1._r8)
                end if
 
