@@ -39,7 +39,8 @@ module CNAllocationMod
 
   ! !PRIVATE MEMBER VARIABLES:
   real(r8), parameter, private :: potato_min_leaf_alloc = 1.e-5_r8
-  real(r8), parameter, private :: potato_debug_min_tuber_alloc = 0.20_r8
+  real(r8), parameter, private :: potato_tind_to_tuber_alloc = 20._r8
+  real(r8), parameter, private :: potato_max_tuber_alloc = 0.75_r8
 
   type, private :: params_type
      real(r8) :: dayscrecover          ! number of days to recover negative cpool
@@ -388,7 +389,8 @@ contains
                   (arooti(ivt(p)) - arootf(ivt(p))) * min(1._r8, hui(p)/gddmaturity(p))))
              if (is_potato_pft(ivt(p))) then
                 aroot(p) = min(aroot(p), 1._r8 - potato_min_leaf_alloc)
-                tuber_bulking_frac = max(potato_debug_min_tuber_alloc, min(1._r8, substor_tind(p)))
+                tuber_bulking_frac = min(potato_max_tuber_alloc, &
+                     max(0._r8, potato_tind_to_tuber_alloc * substor_tind(p)))
                 tuber_alloc = max(0._r8, min(1._r8 - aroot(p) - potato_min_leaf_alloc, &
                      (1._r8 - aroot(p)) * tuber_bulking_frac))
                 veg_alloc = max(potato_min_leaf_alloc, 1._r8 - aroot(p) - tuber_alloc)
