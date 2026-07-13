@@ -2750,8 +2750,15 @@ contains
          leafc_xfer(p)  = initial_seed_at_planting
       end if
       leafn_xfer(p) = leafc_xfer(p) / leafcn_in ! with onset
-      crop_seedc_to_leaf(p) = leafc_xfer(p)/dt
-      crop_seedn_to_leaf(p) = leafn_xfer(p)/dt
+      if (is_potato) then
+         ! Potato is planted from an external seed tuber/piece, so do not
+         ! create a grain-seed deficit that later subtracts from tuber yield.
+         crop_seedc_to_leaf(p) = 0._r8
+         crop_seedn_to_leaf(p) = 0._r8
+      else
+         crop_seedc_to_leaf(p) = leafc_xfer(p)/dt
+         crop_seedn_to_leaf(p) = leafn_xfer(p)/dt
+      end if
 
       ! because leafc_xfer is set above rather than incremneted through the normal process, must also set its isotope
       ! pools here.  use totvegc_patch as the closest analogue if nonzero, and use initial value otherwise
