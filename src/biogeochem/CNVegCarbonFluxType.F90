@@ -140,8 +140,11 @@ module CNVegCarbonFluxType
      real(r8), pointer :: frootc_to_litter_patch                    (:)     ! fine root C litterfall (gC/m2/s)
      real(r8), pointer :: livestemc_to_litter_patch                 (:)     ! live stem C litterfall (gC/m2/s)
      real(r8), pointer :: repr_grainc_to_food_patch               (:,:)     ! grain C to food for prognostic crop(gC/m2/s) [patch, repr_grain_min:repr_grain_max]
+     real(r8), pointer :: repr_grainc_to_food_gross_patch         (:,:)     ! gross grain/tuber C to food before crop seed repayment (gC/m2/s) [patch, repr_grain_min:repr_grain_max]
      real(r8), pointer :: repr_grainc_to_food_perharv_patch       (:,:,:)   ! grain C to food for prognostic crop accumulated by harvest (gC/m2) [patch, harvest, repr_grain_min:repr_grain_max]. Not per-second because this variable represents an accumulation over each growing season, to be instantaneously at the end of each calendar year, to provide output that's easier to work with.
+     real(r8), pointer :: repr_grainc_to_food_gross_perharv_patch (:,:,:)   ! gross grain/tuber C to food per harvest before crop seed repayment (gC/m2) [patch, harvest, repr_grain_min:repr_grain_max]
      real(r8), pointer :: repr_grainc_to_food_thisyr_patch        (:,:)     ! grain C to food for prognostic crop accumulated this calendar year (gC/m2) [patch, repr_grain_min:repr_grain_max]. Not per-second because this variable represents an accumulation over an entire calendar year, to be saved instantaneously at the end of each calendar year, to provide output that's easier to work with.
+     real(r8), pointer :: repr_grainc_to_food_gross_thisyr_patch  (:,:)     ! gross grain/tuber C to food accumulated this calendar year before crop seed repayment (gC/m2) [patch, repr_grain_min:repr_grain_max]
      real(r8), pointer :: repr_structurec_to_cropprod_patch       (:,:)     ! reproductive structure C to crop product pool for prognostic crop (gC/m2/s) [patch, repr_structure_min:repr_structure_max]
      real(r8), pointer :: repr_structurec_to_litter_patch         (:,:)     ! reproductive structure C to litter for prognostic crop (gC/m2/s) [patch, repr_structure_min:repr_structure_max]
      
@@ -667,8 +670,11 @@ contains
     allocate(this%cpool_to_reproductivec_storage_patch(begp:endp, nrepr)); this%cpool_to_reproductivec_storage_patch    (:,:) = nan
     allocate(this%livestemc_to_litter_patch                 (begp:endp)) ; this%livestemc_to_litter_patch                 (:) = nan
     allocate(this%repr_grainc_to_food_patch(begp:endp, repr_grain_min:repr_grain_max)) ; this%repr_grainc_to_food_patch (:,:) = nan
+    allocate(this%repr_grainc_to_food_gross_patch(begp:endp, repr_grain_min:repr_grain_max)) ; this%repr_grainc_to_food_gross_patch (:,:) = nan
     allocate(this%repr_grainc_to_food_perharv_patch(begp:endp, 1:mxharvests, repr_grain_min:repr_grain_max)) ; this%repr_grainc_to_food_perharv_patch (:,:,:) = nan
+    allocate(this%repr_grainc_to_food_gross_perharv_patch(begp:endp, 1:mxharvests, repr_grain_min:repr_grain_max)) ; this%repr_grainc_to_food_gross_perharv_patch (:,:,:) = nan
     allocate(this%repr_grainc_to_food_thisyr_patch(begp:endp, repr_grain_min:repr_grain_max)) ; this%repr_grainc_to_food_thisyr_patch (:,:) = nan
+    allocate(this%repr_grainc_to_food_gross_thisyr_patch(begp:endp, repr_grain_min:repr_grain_max)) ; this%repr_grainc_to_food_gross_thisyr_patch (:,:) = nan
     allocate(this%repr_structurec_to_cropprod_patch(begp:endp, repr_structure_min:repr_structure_max))
     this%repr_structurec_to_cropprod_patch(:,:) = nan
     allocate(this%repr_structurec_to_litter_patch(begp:endp, repr_structure_min:repr_structure_max))
@@ -936,6 +942,7 @@ contains
 
        if (use_crop) then
           this%repr_grainc_to_food_patch(begp:endp,:) = spval
+          this%repr_grainc_to_food_gross_patch(begp:endp,:) = spval
           do k = repr_grain_min, repr_grain_max
              data1dptr => this%repr_grainc_to_food_patch(:,k)
              call hist_addfld1d ( &
@@ -948,12 +955,22 @@ contains
              if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
                 call hist_addfld1d (fname='GRAIN_TUBER', units='gC/m^2/s', &
                      avgflag='A', &
-                     long_name='grain/tuber C to food', &
+                     long_name='grain/tuber C to food after crop seed repayment', &
                      ptr_patch=data1dptr)
+             end if
+
+             data1dptr => this%repr_grainc_to_food_gross_patch(:,k)
+             if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
+                call hist_addfld1d (fname='GRAIN_TUBER_GROSS', units='gC/m^2/s', &
+                     avgflag='A', &
+                     long_name='gross grain/tuber C before crop seed repayment', &
+                     ptr_patch=data1dptr, &
+                     default='inactive')
              end if
           end do
 
           this%repr_grainc_to_food_perharv_patch(begp:endp,:,:) = spval
+          this%repr_grainc_to_food_gross_perharv_patch(begp:endp,:,:) = spval
           do k = repr_grain_min, repr_grain_max
              data2dptr => this%repr_grainc_to_food_perharv_patch(:,:,k)
              call hist_addfld2d ( &
@@ -969,13 +986,24 @@ contains
                 call hist_addfld2d (fname='GRAIN_TUBER_PERHARV', units='gC/m^2', &
                      type2d='mxharvests', &
                      avgflag='I', &
-                     long_name='grain/tuber C to food per harvest; should only be output annually', &
+                     long_name='grain/tuber C to food per harvest after crop seed repayment; should only be output annually', &
+                     ptr_patch=data2dptr, &
+                     default='inactive')
+             end if
+
+             data2dptr => this%repr_grainc_to_food_gross_perharv_patch(:,:,k)
+             if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
+                call hist_addfld2d (fname='GRAIN_TUBER_GROSS_PERHARV', units='gC/m^2', &
+                     type2d='mxharvests', &
+                     avgflag='I', &
+                     long_name='gross grain/tuber C per harvest before crop seed repayment; should only be output annually', &
                      ptr_patch=data2dptr, &
                      default='inactive')
              end if
           end do
 
           this%repr_grainc_to_food_thisyr_patch(begp:endp,:) = spval
+          this%repr_grainc_to_food_gross_thisyr_patch(begp:endp,:) = spval
           do k = repr_grain_min, repr_grain_max
              data1dptr => this%repr_grainc_to_food_thisyr_patch(:,k)
              call hist_addfld1d ( &
@@ -989,7 +1017,16 @@ contains
              if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
                 call hist_addfld1d (fname='GRAIN_TUBER_ANN', units='gC/m^2', &
                      avgflag='I', &
-                     long_name='grain/tuber C to food harvested per calendar year; should only be output annually', &
+                     long_name='grain/tuber C to food harvested per calendar year after crop seed repayment; should only be output annually', &
+                     ptr_patch=data1dptr, &
+                     default='inactive')
+             end if
+
+             data1dptr => this%repr_grainc_to_food_gross_thisyr_patch(:,k)
+             if (trim(get_repr_hist_fname(k)) == 'GRAIN') then
+                call hist_addfld1d (fname='GRAIN_TUBER_GROSS_ANN', units='gC/m^2', &
+                     avgflag='I', &
+                     long_name='gross grain/tuber C harvested per calendar year before crop seed repayment; should only be output annually', &
                      ptr_patch=data1dptr, &
                      default='inactive')
              end if
@@ -4259,6 +4296,7 @@ contains
           do fi = 1,num_patch
              i = filter_patch(fi)
              this%repr_grainc_to_food_patch(i,k) = value_patch
+             this%repr_grainc_to_food_gross_patch(i,k) = value_patch
              this%repr_grainc_to_seed_patch(i,k) = value_patch
           end do
        end do
