@@ -146,6 +146,7 @@ module CNPhenologyMod
   real(r8), private :: initial_seed_at_planting        = 3._r8   ! Initial seed at planting
   real(r8), private :: potato_seed_tuber_leafc        = 30._r8  ! Potato seed-tuber reserve C sent to leaf xfer at planting
   real(r8), private :: potato_min_tlai_for_tuber_init = 1.25_r8 ! Minimum potato LAI before entering tuber bulking
+  real(r8), private :: potato_min_tuber_bulking_dtt  = 60._r8  ! Minimum SUBSTOR thermal days after tuber initiation before normal harvest
 
   real(r8)         :: min_gddmaturity = 1._r8     ! Weird things can happen if gddmaturity is tiny
   logical,  public :: generate_crop_gdds = .false. ! If true, harvest the day before next sowing
@@ -200,7 +201,8 @@ contains
     character(len=*), parameter :: nmlname = 'cnphenology'
     !-----------------------------------------------------------------------
     namelist /cnphenology/ initial_seed_at_planting, potato_seed_tuber_leafc, &
-                           potato_min_tlai_for_tuber_init, onset_thresh_depends_on_veg, &
+                           potato_min_tlai_for_tuber_init, potato_min_tuber_bulking_dtt, &
+                           onset_thresh_depends_on_veg, &
                            min_critical_dayl_method, generate_crop_gdds, &
                            use_mxmat
 
@@ -226,6 +228,7 @@ contains
     call shr_mpi_bcast (initial_seed_at_planting,    mpicom)
     call shr_mpi_bcast (potato_seed_tuber_leafc,    mpicom)
     call shr_mpi_bcast (potato_min_tlai_for_tuber_init, mpicom)
+    call shr_mpi_bcast (potato_min_tuber_bulking_dtt, mpicom)
     call shr_mpi_bcast (onset_thresh_depends_on_veg, mpicom)
     call shr_mpi_bcast (min_critical_dayl_method,     mpicom)
     call shr_mpi_bcast (generate_crop_gdds,          mpicom)
@@ -1875,6 +1878,7 @@ contains
     logical fake_harvest  ! Dealing with incorrect Dec. 31 planting
     logical did_plant_prescribed_today    ! Was the crop sown today?
     logical vernalization_forces_harvest ! Was the crop killed by freezing during vernalization?
+    real(r8) :: potato_post_init_dtt ! SUBSTOR thermal days after potato tuber initiation
     logical is_potato
     real(r8) substor_rtf
     real(r8) substor_rdlf
@@ -2373,6 +2377,15 @@ contains
                    harvest_reason = HARVEST_REASON_MAXSEASLENGTH
                else if (do_plant_prescribed_tomorrow) then
                    harvest_reason = HARVEST_REASON_SOWTOMORROW
+               end if
+
+               if (is_potato .and. do_harvest .and. .not. do_plant_prescribed_tomorrow .and. &
+                    substor_xdtt(p) > 0._r8) then
+                  potato_post_init_dtt = max(0._r8, substor_cumdtt(p) - substor_xdtt(p))
+                  if (potato_post_init_dtt < potato_min_tuber_bulking_dtt) then
+                     do_harvest = .false.
+                     harvest_reason = 0._r8
+                  end if
                end if
             endif
 
