@@ -39,6 +39,7 @@ contains
     ! !USES:
     use pftconMod        , only : noveg, nc3crop, nc3irrig, nbrdlf_evr_shrub, nbrdlf_dcd_brl_shrub
     use pftconMod        , only : npcropmin 
+    use pftconMod        , only : npotatoes, nirrig_potatoes
     use pftconMod        , only : ntmp_corn, nirrig_tmp_corn
     use pftconMod        , only : ntrp_corn, nirrig_trp_corn
     use pftconMod        , only : nsugarcane, nirrig_sugarcane
@@ -72,6 +73,7 @@ contains
     real(r8) :: ol         ! thickness of canopy layer covered by snow (m)
     real(r8) :: fb         ! fraction of canopy layer covered by snow
     real(r8) :: tlai_old   ! for use in Zeng tsai formula
+    real(r8) :: effective_laimx ! potato-safe maximum LAI used for peaklai/height
     real(r8) :: tsai_old   ! for use in Zeng tsai formula
     real(r8) :: tsai_min   ! PATCH derived minimum tsai
     real(r8) :: tsai_alpha ! monthly decay rate of tsai
@@ -234,7 +236,13 @@ contains
 
             else if (ivt(p) >= npcropmin) then ! prognostic crops
 
-               if (tlai(p) >= laimx(ivt(p))) peaklai(p) = 1 ! used in CNAllocation
+               effective_laimx = laimx(ivt(p))
+               if (ivt(p) == npotatoes .or. ivt(p) == nirrig_potatoes) then
+                  if (.not. (effective_laimx > 0._r8) .or. effective_laimx < 5._r8) then
+                     effective_laimx = 5._r8
+                  end if
+               end if
+               if (tlai(p) >= effective_laimx) peaklai(p) = 1 ! used in CNAllocation
 
                if (ivt(p) == ntmp_corn .or. ivt(p) == nirrig_tmp_corn .or. &
                    ivt(p) == ntrp_corn .or. ivt(p) == nirrig_trp_corn .or. &
@@ -255,7 +263,7 @@ contains
                !if (harvdate(p) < 999 .and. tlai(p) > 0._r8) write(iulog,*) 'CNVegStructUpdate: tlai>0 after harvest!' ! remove after initial debugging?
 
                ! canopy top and bottom heights
-               htop(p) = ztopmx(ivt(p)) * (min(tlai(p)/(laimx(ivt(p))-1._r8),1._r8))**2
+               htop(p) = ztopmx(ivt(p)) * (min(tlai(p)/(effective_laimx-1._r8),1._r8))**2
                htmx(p) = max(htmx(p), htop(p))
                htop(p) = max(0.05_r8, max(htmx(p),htop(p)))
                hbot(p) = 0.02_r8

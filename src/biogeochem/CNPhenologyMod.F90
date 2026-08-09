@@ -145,7 +145,7 @@ module CNPhenologyMod
 
   real(r8), private :: initial_seed_at_planting        = 3._r8   ! Initial seed at planting
   real(r8), private :: potato_seed_tuber_leafc        = 30._r8  ! Potato seed-tuber reserve C sent to leaf xfer at planting
-  real(r8), private :: potato_min_tlai_for_tuber_init = 1.25_r8 ! Minimum potato LAI before entering tuber bulking
+  real(r8), private :: potato_min_tlai_for_tuber_init = 2.50_r8 ! Minimum potato LAI before entering tuber bulking
   real(r8), private :: potato_min_tuber_bulking_dtt  = 60._r8  ! Minimum SUBSTOR thermal days after tuber initiation before normal harvest
 
   real(r8)         :: min_gddmaturity = 1._r8     ! Weird things can happen if gddmaturity is tiny
