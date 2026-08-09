@@ -39,8 +39,8 @@ module CNAllocationMod
 
   ! !PRIVATE MEMBER VARIABLES:
   real(r8), parameter, private :: potato_min_leaf_alloc = 1.e-5_r8
-  real(r8), parameter, private :: potato_min_tuber_alloc = 0.60_r8
-  real(r8), parameter, private :: potato_tind_to_tuber_alloc = 60._r8
+  real(r8), parameter, private :: potato_tuber_ramp_start_dtt = 10._r8
+  real(r8), parameter, private :: potato_tuber_ramp_duration_dtt = 50._r8
   real(r8), parameter, private :: potato_max_tuber_alloc = 0.90_r8
 
   type, private :: params_type
@@ -299,8 +299,9 @@ contains
     ! !LOCAL VARIABLES:
     integer :: p, fp, k
     real(r8) :: fleaf                                      ! fraction allocated to leaf
-    real(r8) :: tuber_bulking_frac                         ! fraction of potato tuber-bulking phase completed
+    real(r8) :: tuber_bulking_frac                         ! fraction of potato non-root allocation sent to tuber
     real(r8) :: tuber_alloc                                ! potato allocation to tuber/reproductive pool
+    real(r8) :: potato_post_init_dtt                       ! SUBSTOR thermal time since tuber initiation
     real(r8) :: veg_alloc                                  ! potato allocation remaining for leaf and stem
     real(r8) :: stem_share                                 ! potato stem share of vegetative allocation
     real(r8) :: crop_phase(bounds%begp:bounds%endp)
@@ -321,7 +322,8 @@ contains
          declfact              => pftcon%declfact                                   , & ! Input:  parameter used below
          croplive              => crop_inst%croplive_patch                          , & ! Input:  [logical  (:)   ]  flag, true if planted, not harvested
          hui                   => crop_inst%hui_patch                               , & ! Input:  [real(r8) (:)   ]  crop patch heat unit index (growing degree-days); set to 0 at sowing and accumulated until harvest
-         substor_tind          => crop_inst%substor_tind_patch                      , & ! Input:  [real(r8) (:)   ]  SUBSTOR potato tuber demand factor
+         substor_cumdtt        => crop_inst%substor_cumdtt_patch                    , & ! Input:  [real(r8) (:)   ]  SUBSTOR potato cumulative thermal time
+         substor_xdtt          => crop_inst%substor_xdtt_patch                      , & ! Input:  [real(r8) (:)   ]  SUBSTOR thermal time at tuber initiation
          peaklai               => cnveg_state_inst%peaklai_patch                    , & ! Input:  [integer  (:)   ]  1: max allowed lai; 0: not at max
          gddmaturity           => cnveg_state_inst%gddmaturity_patch                , & ! Input:  [real(r8) (:)   ]  gdd needed to harvest
          huigrain              => cnveg_state_inst%huigrain_patch                   , & ! Input:  [real(r8) (:)   ]  same to reach vegetative maturity
@@ -390,10 +392,13 @@ contains
                   (arooti(ivt(p)) - arootf(ivt(p))) * min(1._r8, hui(p)/gddmaturity(p))))
              if (is_potato_pft(ivt(p))) then
                 aroot(p) = min(aroot(p), 1._r8 - potato_min_leaf_alloc)
-                if (substor_tind(p) > 0._r8) then
-                   tuber_bulking_frac = min(potato_max_tuber_alloc, &
-                        max(potato_min_tuber_alloc, potato_tind_to_tuber_alloc * substor_tind(p)))
+                if (substor_xdtt(p) > 0._r8 .and. substor_cumdtt(p) > substor_xdtt(p)) then
+                   potato_post_init_dtt = max(0._r8, substor_cumdtt(p) - substor_xdtt(p))
+                   tuber_bulking_frac = potato_max_tuber_alloc * max(0._r8, &
+                        min(1._r8, (potato_post_init_dtt - potato_tuber_ramp_start_dtt) / &
+                        potato_tuber_ramp_duration_dtt))
                 else
+                   potato_post_init_dtt = 0._r8
                    tuber_bulking_frac = 0._r8
                 end if
                 tuber_alloc = max(0._r8, min(1._r8 - aroot(p) - potato_min_leaf_alloc, &
